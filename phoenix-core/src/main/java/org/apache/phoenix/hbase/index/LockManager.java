@@ -25,10 +25,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import io.opentracing.Scope;
 import org.apache.hadoop.hbase.exceptions.TimeoutIOException;
-import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
 import org.apache.phoenix.hbase.index.util.ImmutableBytesPtr;
+import org.apache.phoenix.trace.TracingUtils;
+import org.apache.phoenix.trace.util.Tracing;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,12 +61,12 @@ public class LockManager {
     public RowLock lockRow(ImmutableBytesPtr rowKey, int waitDuration) throws IOException {
         RowLockContext rowLockContext = null;
         RowLockImpl result = null;
-        TraceScope traceScope = null;
+        Scope scope = null;
 
         // If we're tracing start a span to show how long this took.
-        if (Trace.isTracing()) {
-            traceScope = Trace.startSpan("LockManager.getRowLock");
-            traceScope.getSpan().addTimelineAnnotation("Getting a lock");
+        if (Tracing.isTracing()) {
+            scope = TracingUtils.createTrace("LockManager.getRowLock");
+            TracingUtils.addTimelineAnnotation("Getting a lock");
         }
 
         boolean success = false;
@@ -87,8 +88,8 @@ public class LockManager {
                 result = rowLockContext.newRowLock();
             }
             if (!result.getLock().tryLock(waitDuration, TimeUnit.MILLISECONDS)) {
-                if (traceScope != null) {
-                    traceScope.getSpan().addTimelineAnnotation("Failed to get row lock");
+                if (scope != null) {
+                    TracingUtils.addTimelineAnnotation("Failed to get row lock");
                 }
                 throw new TimeoutIOException("Timed out waiting for lock for row: " + rowKey);
             }
@@ -99,16 +100,16 @@ public class LockManager {
             LOGGER.warn("Thread interrupted waiting for lock on row: " + rowKey);
             InterruptedIOException iie = new InterruptedIOException();
             iie.initCause(ie);
-            if (traceScope != null) {
-                traceScope.getSpan().addTimelineAnnotation("Interrupted exception getting row lock");
+            if (scope != null) {
+                TracingUtils.addTimelineAnnotation("Interrupted exception getting row lock");
             }
             Thread.currentThread().interrupt();
             throw iie;
         } finally {
             // On failure, clean up the counts just in case this was the thing keeping the context alive.
             if (!success && rowLockContext != null) rowLockContext.cleanUp();
-            if (traceScope != null) {
-                traceScope.close();
+            if (scope != null) {
+                scope.close();
             }
         }
     }

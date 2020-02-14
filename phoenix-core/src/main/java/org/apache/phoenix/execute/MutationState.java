@@ -41,6 +41,8 @@ import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.Immutable;
 
+import io.opentracing.Scope;
+import io.opentracing.Span;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Delete;
@@ -50,8 +52,6 @@ import org.apache.hadoop.hbase.client.Table;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
-import org.apache.htrace.Span;
-import org.apache.htrace.TraceScope;
 import org.apache.phoenix.cache.ServerCacheClient.ServerCache;
 import org.apache.phoenix.compile.MutationPlan;
 import org.apache.phoenix.coprocessor.BaseScannerRegionObserver;
@@ -95,6 +95,7 @@ import org.apache.phoenix.schema.types.PLong;
 import org.apache.phoenix.schema.types.PTimestamp;
 import org.apache.phoenix.schema.MaxMutationSizeBytesExceededException;
 import org.apache.phoenix.schema.MaxMutationSizeExceededException;
+import org.apache.phoenix.trace.TracingUtils;
 import org.apache.phoenix.trace.util.Tracing;
 import org.apache.phoenix.transaction.PhoenixTransactionContext;
 import org.apache.phoenix.transaction.PhoenixTransactionContext.PhoenixVisibilityLevel;
@@ -918,8 +919,8 @@ public class MutationState implements SQLCloseable {
         MultiRowMutationState multiRowMutationState;
         Map<TableInfo, List<Mutation>> physicalTableMutationMap = Maps.newLinkedHashMap();
         // add tracing for this operation
-        try (TraceScope trace = Tracing.startNewSpan(connection, "Committing mutations to tables")) {
-            Span span = trace.getSpan();
+        try (Scope trace = TracingUtils.startNewSpan(connection, "Committing mutations to tables")) {
+            Span span = trace.span();
             ImmutableBytesWritable indexMetaDataPtr = new ImmutableBytesWritable();
             while (tableRefIterator.hasNext()) {
                 // at this point we are going through mutations for each table
@@ -1013,7 +1014,10 @@ public class MutationState implements SQLCloseable {
 
             // create a span per target table
             // TODO maybe we can be smarter about the table name to string here?
-            Span child = Tracing.child(span, "Writing mutation batch for table: " + Bytes.toString(htableName));
+            Scope scope = TracingUtils.createTrace(
+                "Writing mutation batch for table: " + Bytes
+                    .toString(htableName), span);
+            Span child = scope.span();
 
             int retryCount = 0;
             boolean shouldRetry = false;
@@ -1057,7 +1061,7 @@ public class MutationState implements SQLCloseable {
                     mutationSizeBytes = calculateMutationSize(mutationList);
 
                     startTime = EnvironmentEdgeManager.currentTimeMillis();
-                    child.addTimelineAnnotation("Attempt " + retryCount);
+                    TracingUtils.addTimelineAnnotation("Attempt " + retryCount);
                     Iterator<List<Mutation>> itrListMutation = mutationBatchList.iterator();
                     while (itrListMutation.hasNext()) {
                         final List<Mutation> mutationBatch = itrListMutation.next();
@@ -1125,8 +1129,7 @@ public class MutationState implements SQLCloseable {
                             LOGGER.debug("Sent batch of " + mutationBatch.size() + " for "
                                     + Bytes.toString(htableName));
                     }
-                    child.stop();
-                    child.stop();
+                    child.finish();
                     shouldRetry = false;
                     mutationCommitTime = EnvironmentEdgeManager.currentTimeMillis() - startTime;
                     GLOBAL_MUTATION_COMMIT_TIME.update(mutationCommitTime);
@@ -1159,8 +1162,8 @@ public class MutationState implements SQLCloseable {
                             connection.getQueryServices().clearTableRegionCache(TableName.valueOf(htableName));
 
                             // add a new child span as this one failed
-                            child.addTimelineAnnotation(msg);
-                            child.stop();
+                            TracingUtils.addTimelineAnnotation(msg);
+                            child.finish();
                             child = Tracing.child(span, "Failed batch, attempting retry");
 
                             continue;

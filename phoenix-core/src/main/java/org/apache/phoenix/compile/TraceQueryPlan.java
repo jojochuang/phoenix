@@ -24,13 +24,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import io.opentracing.Scope;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.htrace.Sampler;
-import org.apache.htrace.TraceScope;
 import org.apache.phoenix.compile.GroupByCompiler.GroupBy;
 import org.apache.phoenix.compile.OrderByCompiler.OrderBy;
 import org.apache.phoenix.execute.visitor.QueryPlanVisitor;
@@ -61,6 +61,7 @@ import org.apache.phoenix.schema.TableRef;
 import org.apache.phoenix.schema.tuple.ResultTuple;
 import org.apache.phoenix.schema.tuple.Tuple;
 import org.apache.phoenix.schema.types.PLong;
+import org.apache.phoenix.trace.TracingUtils;
 import org.apache.phoenix.trace.util.Tracing;
 import org.apache.phoenix.util.ByteUtil;
 import org.apache.phoenix.util.EnvironmentEdgeManager;
@@ -126,7 +127,7 @@ public class TraceQueryPlan implements QueryPlan {
     @Override
     public ResultIterator iterator(ParallelScanGrouper scanGrouper) throws SQLException {
         final PhoenixConnection conn = stmt.getConnection();
-        if (conn.getTraceScope() == null && !traceStatement.isTraceOn()) {
+        if (conn.getScope() == null && !traceStatement.isTraceOn()) {
             return ResultIterator.EMPTY_ITERATOR;
         }
         return new TraceQueryResultIterator(conn);
@@ -252,16 +253,17 @@ public class TraceQueryPlan implements QueryPlan {
         @Override
         public Tuple next() throws SQLException {
             if(!first) return null;
-            TraceScope traceScope = conn.getTraceScope();
+            Scope scope = conn.getScope();
             if (traceStatement.isTraceOn()) {
                 conn.setSampler(Tracing.getConfiguredSampler(traceStatement));
                 if (conn.getSampler() == Sampler.NEVER) {
                     closeTraceScope(conn);
                 }
-                if (traceScope == null && !conn.getSampler().equals(Sampler.NEVER)) {
-                    traceScope = Tracing.startNewSpan(conn, "Enabling trace");
-                    if (traceScope.getSpan() != null) {
-                        conn.setTraceScope(traceScope);
+                if (scope == null && !conn.getSampler().equals(Sampler.NEVER)) {
+                    scope = TracingUtils
+                        .startNewSpan(conn, "Enabling trace");
+                    if (scope.span() != null) {
+                        conn.setScope(scope);
                     } else {
                         closeTraceScope(conn);
                     }
@@ -270,12 +272,12 @@ public class TraceQueryPlan implements QueryPlan {
                 closeTraceScope(conn);
                 conn.setSampler(Sampler.NEVER);
             }
-            if (traceScope == null || traceScope.getSpan() == null) return null;
+            if (scope == null || scope.span() == null) return null;
             first = false;
             ImmutableBytesWritable ptr = new ImmutableBytesWritable();
             ParseNodeFactory factory = new ParseNodeFactory();
             LiteralParseNode literal =
-                    factory.literal(traceScope.getSpan().getTraceId());
+                    factory.literal(TracingUtils.getTraceId(scope.span()));
             LiteralExpression expression =
                     LiteralExpression.newConstant(literal.getValue(), PLong.INSTANCE,
                         Determinism.ALWAYS);
@@ -293,9 +295,9 @@ public class TraceQueryPlan implements QueryPlan {
         }
 
         private void closeTraceScope(final PhoenixConnection conn) {
-            if(conn.getTraceScope()!=null) {
-                conn.getTraceScope().close();
-                conn.setTraceScope(null);
+            if(conn.getScope()!=null) {
+                conn.getScope().close();
+                conn.setScope(null);
             }
         }
 

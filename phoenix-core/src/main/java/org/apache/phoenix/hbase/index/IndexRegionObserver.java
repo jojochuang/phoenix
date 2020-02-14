@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import io.opentracing.Scope;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -58,9 +59,6 @@ import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
-import org.apache.htrace.Span;
-import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
 import org.apache.phoenix.coprocessor.BaseScannerRegionObserver.ReplayWrite;
 import org.apache.phoenix.coprocessor.DelegateRegionCoprocessorEnvironment;
 import org.apache.phoenix.hbase.index.LockManager.RowLock;
@@ -78,8 +76,8 @@ import org.apache.phoenix.hbase.index.write.LazyParallelWriterIndexCommitter;
 import org.apache.phoenix.index.IndexMaintainer;
 import org.apache.phoenix.index.PhoenixIndexMetaData;
 import org.apache.phoenix.query.QueryServicesOptions;
+import org.apache.phoenix.trace.Trace;
 import org.apache.phoenix.trace.TracingUtils;
-import org.apache.phoenix.trace.util.NullSpan;
 import org.apache.phoenix.util.EnvironmentEdgeManager;
 import org.apache.phoenix.util.ServerUtil;
 import org.apache.phoenix.util.ServerUtil.ConnectionType;
@@ -542,15 +540,11 @@ public class IndexRegionObserver implements RegionObserver, RegionCoprocessor {
           PhoenixIndexMetaData indexMetaData) throws Throwable {
       List<IndexMaintainer> maintainers = indexMetaData.getIndexMaintainers();
       // get the current span, or just use a null-span to avoid a bunch of if statements
-      try (TraceScope scope = Trace.startSpan("Starting to build index updates")) {
-          Span current = scope.getSpan();
-          if (current == null) {
-              current = NullSpan.INSTANCE;
-          }
+      try (Scope scope = Trace.startSpan("Starting to build index updates")) {
           // get the index updates for all elements in this batch
           context.indexUpdates = ArrayListMultimap.<HTableInterfaceReference, Pair<Mutation, byte[]>>create();
           this.builder.getIndexUpdates(context.indexUpdates, miniBatchOp, mutations, indexMetaData);
-          current.addTimelineAnnotation("Built index updates, doing preStep");
+          TracingUtils.addTimelineAnnotation("Built index updates, doing preStep");
           handleLocalIndexUpdates(c, miniBatchOp, context.indexUpdates);
           context.preIndexUpdates = ArrayListMultimap.<HTableInterfaceReference, Mutation>create();
           int updateCount = 0;
@@ -591,7 +585,7 @@ public class IndexRegionObserver implements RegionObserver, RegionCoprocessor {
                   }
               }
           }
-          TracingUtils.addAnnotation(current, "index update count", updateCount);
+          TracingUtils.addAnnotation("index update count", updateCount);
       }
   }
 
@@ -774,12 +768,8 @@ public class IndexRegionObserver implements RegionObserver, RegionCoprocessor {
       }
 
       // get the current span, or just use a null-span to avoid a bunch of if statements
-      try (TraceScope scope = Trace.startSpan("Completing " + (post ? "post" : "pre") + " index writes")) {
-          Span current = scope.getSpan();
-          if (current == null) {
-              current = NullSpan.INSTANCE;
-          }
-          current.addTimelineAnnotation("Actually doing " + (post ? "post" : "pre") + " index update for first time");
+      try (Scope scope = Trace.startSpan("Completing " + (post ? "post" : "pre") + " index writes")) {
+          TracingUtils.addTimelineAnnotation("Actually doing " + (post ? "post" : "pre") + " index update for first time");
           if (post) {
               postWriter.write(indexUpdates, false, context.clientVersion);
           } else {

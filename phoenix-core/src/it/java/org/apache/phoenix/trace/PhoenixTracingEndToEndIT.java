@@ -31,15 +31,21 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import io.opentracing.Scope;
+import io.opentracing.Span;
+import io.opentracing.mock.MockSpan;
+import io.opentracing.mock.MockTracer;
+import io.opentracing.util.GlobalTracer;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.htrace.*;
-import org.apache.htrace.impl.ProbabilitySampler;
+//import org.apache.htrace.*;
+//import org.apache.htrace.impl.ProbabilitySampler;
+import org.apache.htrace.Sampler;
+import org.apache.htrace.core.ProbabilitySampler;
 import org.apache.phoenix.coprocessor.BaseScannerRegionObserver;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.trace.TraceReader.SpanInfo;
 import org.apache.phoenix.trace.TraceReader.TraceHolder;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +55,7 @@ import com.google.common.collect.ImmutableMap;
 /**
  * Test that the logging sink stores the expected metrics/stats
  */
-@Ignore("Will need to revisit for new HDFS/HBase/HTrace, broken on 5.x")
+//@Ignore("Will need to revisit for new HDFS/HBase/HTrace, broken on 5.x")
 public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PhoenixTracingEndToEndIT.class);
@@ -77,22 +83,24 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
         testTraceWriter.start();
 
         // write some spans
-        TraceScope trace = Trace.startSpan("Start write test", Sampler.ALWAYS);
-        Span span = trace.getSpan();
+        try (Scope trace = TracingUtils.createTrace("Start write test")) {
+            //Scope trace = Trace.startSpan("Start write test");
+            //Span span = trace.span();
 
-        // add a child with some annotations
-        Span child = span.child("child 1");
-        child.addTimelineAnnotation("timeline annotation");
-        TracingUtils.addAnnotation(child, "test annotation", 10);
-        child.stop();
+            // add a child with some annotations
+            try (Scope scope = TracingUtils.createTrace("child 1")) {
+                TracingUtils.addTimelineAnnotation("timeline annotation");
+                TracingUtils.addAnnotation("test annotation", 10);
+            }
 
-        // sleep a little bit to get some time difference
-        Thread.sleep(100);
+            // sleep a little bit to get some time difference
+            //MetaDataEndpointImplThread.sleep(100);
 
-        trace.close();
+            //trace.close();
+        }
 
         // pass the trace on
-        Tracer.getInstance().deliver(span);
+        //Tracer.getInstance().deliver(span);
 
         // wait for the tracer to actually do the write
         assertTrue("Sink not flushed. commit() not called on the connection", latch.await(60, TimeUnit.SECONDS));
@@ -373,7 +381,7 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
             ResultSet  rs = statement.executeQuery("TRACE ON");
             assertTrue(rs.next());
             PhoenixConnection pconn = (PhoenixConnection) conn1;
-            long traceId = pconn.getTraceScope().getSpan().getTraceId();
+            long traceId = ((MockSpan)pconn.getScope().span()).context().traceId();
             assertEquals(traceId, rs.getLong(1));
             assertEquals(traceId, rs.getLong("trace_id"));
             assertFalse(rs.next());
@@ -395,8 +403,7 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
 
             rs = statement.executeQuery("TRACE ON  WITH SAMPLING 1.0");
             assertTrue(rs.next());
-            traceId = pconn.getTraceScope().getSpan()
-            .getTraceId();
+            traceId = ((MockSpan)pconn.getScope().span()).context().traceId();
             assertEquals(traceId, rs.getLong(1));
             assertEquals(traceId, rs.getLong("trace_id"));
             assertFalse(rs.next());
@@ -430,9 +437,9 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
 
         // create a simple metrics record
         long traceid = 987654;
-        Span span = createNewSpan(traceid, Span.ROOT_SPAN_ID, 10, "root", 12, 13, "Some process", "test annotation for a span");
+        Span span = createNewSpan(traceid, 0L, 10, "root", 12, 13, "Some process", "test annotation for a span");
 
-        Tracer.getInstance().deliver(span);
+        //Tracer.getInstance().deliver(span);
         assertTrue("Updates not written in table", latch.await(60, TimeUnit.SECONDS));
 
         // start a reader
@@ -458,7 +465,7 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
         List<Span> spans = new ArrayList<Span>();
 
         Span span =
-                createNewSpan(traceid, Span.ROOT_SPAN_ID, 7777, "root", 10, 30,
+                createNewSpan(traceid, 0L, 7777, "root", 10, 30,
                         "root process", "root-span tag");
         spans.add(span);
 
@@ -480,8 +487,8 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
                         "third child");
         spans.add(span);
 
-        for(Span span1 : spans)
-            Tracer.getInstance().deliver(span1);
+        //for(Span span1 : spans)
+        //    Tracer.getInstance().deliver(span1);
 
         assertTrue("Updates not written in table", latch.await(100, TimeUnit.SECONDS));
 
@@ -509,24 +516,25 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
     private void validateTrace(List<Span> spans, TraceHolder trace) {
         // drop each span into a sorted list so we get the expected ordering
         Iterator<SpanInfo> spanIter = trace.spans.iterator();
-        for (Span span : spans) {
+        for (Span s : spans) {
+            MockSpan span = (MockSpan)s;
             SpanInfo spanInfo = spanIter.next();
             LOGGER.info("Checking span:\n" + spanInfo);
 
-            long parentId = span.getParentId();
-            if(parentId == Span.ROOT_SPAN_ID) {
+            long parentId = span.parentId();
+            if(parentId == 0L) {
                 assertNull("Got a parent, but it was a root span!", spanInfo.parent);
             } else {
                 assertEquals("Got an unexpected parent span id", parentId, spanInfo.parent.id);
             }
 
-            assertEquals("Got an unexpected start time", span.getStartTimeMillis(), spanInfo.start);
-            assertEquals("Got an unexpected end time", span.getStopTimeMillis(), spanInfo.end);
+            assertEquals("Got an unexpected start time", span.startMicros(), spanInfo.start);
+            assertEquals("Got an unexpected end time", span.finishMicros(), spanInfo.end);
 
             int annotationCount = 0;
-            for(Map.Entry<byte[], byte[]> entry : span.getKVAnnotations().entrySet()) {
+            for(Map.Entry<String, Object> entry : span.tags().entrySet()) {
                 int count = annotationCount++;
-                assertEquals("Didn't get expected annotation", count + " - " + Bytes.toString(entry.getValue()),
+                assertEquals("Didn't get expected annotation", count + " - " + entry.getValue(),
                         spanInfo.annotations.get(count));
             }
             assertEquals("Didn't get expected number of annotations", annotationCount,

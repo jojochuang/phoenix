@@ -59,10 +59,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import io.opentracing.Scope;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Consistency;
 import org.apache.htrace.Sampler;
-import org.apache.htrace.TraceScope;
 import org.apache.phoenix.call.CallRunner;
 import org.apache.phoenix.exception.SQLExceptionCode;
 import org.apache.phoenix.exception.SQLExceptionInfo;
@@ -106,6 +106,7 @@ import org.apache.phoenix.schema.types.PUnsignedDate;
 import org.apache.phoenix.schema.types.PUnsignedTime;
 import org.apache.phoenix.schema.types.PUnsignedTimestamp;
 import org.apache.phoenix.schema.types.PVarbinary;
+//import org.apache.phoenix.trace.util.Tracing;
 import org.apache.phoenix.trace.util.Tracing;
 import org.apache.phoenix.transaction.PhoenixTransactionContext;
 import org.apache.phoenix.util.DateUtil;
@@ -157,7 +158,7 @@ public class PhoenixConnection implements Connection, MetaDataMutated, SQLClosea
     private final String timePattern;
     private final String timestampPattern;
     private int statementExecutionCounter;
-    private TraceScope traceScope = null;
+    private Scope scope = null;
     private volatile boolean isClosed = false;
     private Sampler<?> sampler;
     private boolean readOnly = false;
@@ -172,9 +173,9 @@ public class PhoenixConnection implements Connection, MetaDataMutated, SQLClosea
     private LogLevel logLevel;
     private Double logSamplingRate;
 
-    static {
+    /*static {
         Tracing.addTraceMetricsSource();
-    }
+    }*/
 
     private static Properties newPropsWithSCN(long scn, Properties props) {
         props = new Properties(props);
@@ -651,8 +652,8 @@ public class PhoenixConnection implements Connection, MetaDataMutated, SQLClosea
         try {
             clearMetrics();
             try {
-                if (traceScope != null) {
-                    traceScope.close();
+                if (scope != null) {
+                    scope.close();
                 }
                 closeStatements();
             } finally {
@@ -1192,12 +1193,12 @@ public class PhoenixConnection implements Connection, MetaDataMutated, SQLClosea
         statementExecutionCounter++;
     }
 
-    public TraceScope getTraceScope() {
-        return traceScope;
+    public Scope getScope() {
+        return scope;
     }
 
-    public void setTraceScope(TraceScope traceScope) {
-        this.traceScope = traceScope;
+    public void setScope(Scope scope) {
+        this.scope = scope;
     }
 
     public Map<String, Map<MetricType, Long>> getMutationMetrics() {

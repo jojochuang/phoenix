@@ -17,15 +17,14 @@
  */
 package org.apache.phoenix.trace.util;
 
-import static org.apache.phoenix.util.StringUtil.toBytes;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 
-import javax.annotation.Nullable;
-
+import io.opentracing.Scope;
+import io.opentracing.Span;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.htrace.HTraceConfiguration;
 import org.apache.phoenix.call.CallRunner;
@@ -34,16 +33,12 @@ import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.parse.TraceStatement;
 import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.query.QueryServicesOptions;
-import org.apache.phoenix.trace.TraceSpanReceiver;
 import org.apache.htrace.Sampler;
-import org.apache.htrace.Span;
 import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
 import org.apache.htrace.Tracer;
 import org.apache.htrace.impl.ProbabilitySampler;
 import org.apache.htrace.wrappers.TraceCallable;
-import org.apache.htrace.wrappers.TraceRunnable;
-import org.apache.phoenix.trace.TraceWriter;
+import org.apache.phoenix.trace.TracingUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,7 +66,7 @@ public class Tracing {
      */
     public static enum Frequency {
         NEVER("never", CREATE_NEVER), // default
-        ALWAYS("always", CREATE_ALWAYS), PROBABILITY("probability", CREATE_PROBABILITY);
+        ALWAYS("always", CREATE_ALWAYS)/*, PROBABILITY("probability", CREATE_PROBABILITY)*/;
 
         String key;
         Function<ConfigurationAdapter, Sampler<?>> builder;
@@ -111,7 +106,7 @@ public class Tracing {
                 }
             };
 
-    private static Function<ConfigurationAdapter, Sampler<?>> CREATE_PROBABILITY =
+    /*private static Function<ConfigurationAdapter, Sampler<?>> CREATE_PROBABILITY =
             new Function<ConfigurationAdapter, Sampler<?>>() {
                 @Override
                 public Sampler<?> apply(ConfigurationAdapter conf) {
@@ -121,7 +116,7 @@ public class Tracing {
                             conf.get(QueryServices.TRACING_PROBABILITY_THRESHOLD_ATTRIB, Double.toString(QueryServicesOptions.DEFAULT_TRACING_PROBABILITY_THRESHOLD)));
                     return new ProbabilitySampler(HTraceConfiguration.fromMap(items));
                 }
-            };
+            };*/
 
     public static Sampler<?> getConfiguredSampler(PhoenixConnection connection) {
         String tracelevel = connection.getQueryServices().getProps().get(QueryServices.TRACING_FREQ_ATTRIB, QueryServicesOptions.DEFAULT_TRACING_FREQ);
@@ -156,33 +151,13 @@ public class Tracing {
         props.setProperty(QueryServices.TRACING_FREQ_ATTRIB, freq.key);
     }
 
-    /**
-     * Start a span with the currently configured sampling frequency. Creates a new 'current' span
-     * on this thread - the previous 'current' span will be replaced with this newly created span.
-     * <p>
-     * Hands back the direct span as you shouldn't be detaching the span - use {@link TraceRunnable}
-     * instead to detach a span from this operation.
-     * @param connection from which to read parameters
-     * @param string description of the span to start
-     * @return the underlying span.
-     */
-    public static TraceScope startNewSpan(PhoenixConnection connection, String string) {
-        Sampler<?> sampler = connection.getSampler();
-        TraceScope scope = Trace.startSpan(string, sampler);
-        addCustomAnnotationsToSpan(scope.getSpan(), connection);
-        return scope;
-    }
-
-    public static String getSpanName(Span span) {
+    /*public static String getSpanName(Span span) {
         return Tracing.TRACE_METRIC_PREFIX + span.getTraceId() + SEPARATOR + span.getParentId()
                 + SEPARATOR + span.getSpanId();
-    }
+    }*/
 
     public static Span child(Span s, String d) {
-        if (s == null) {
-            return NullSpan.INSTANCE;
-        }
-        return s.child(d);
+        return TracingUtils.createTrace(d, s).span();
     }
 
     /**
@@ -221,21 +196,8 @@ public class Tracing {
         return new TracingWrapper(conn, desc);
     }
 
-    private static void addCustomAnnotationsToSpan(@Nullable Span span, @NotNull PhoenixConnection conn) {
-        Preconditions.checkNotNull(conn);
-
-        if (span == null) {
-        	return;
-        }
-		Map<String, String> annotations = conn.getCustomTracingAnnotations();
-		// copy over the annotations as bytes
-		for (Map.Entry<String, String> annotation : annotations.entrySet()) {
-			span.addKVAnnotation(toBytes(annotation.getKey()), toBytes(annotation.getValue()));
-        }
-    }
-
     private static class TracingWrapper implements CallWrapper {
-        private TraceScope scope;
+        private Scope scope;
         private final PhoenixConnection conn;
         private final String desc;
 
@@ -246,7 +208,7 @@ public class Tracing {
 
         @Override
         public void before() {
-            scope = Tracing.startNewSpan(conn, "Executing " + desc);
+            scope = TracingUtils.startNewSpan(conn, "Executing " + desc);
         }
 
         @Override
@@ -258,14 +220,14 @@ public class Tracing {
     /**
      * Track if the tracing system has been initialized for phoenix
      */
-    private static boolean initialized = false;
-    private static TraceSpanReceiver traceSpanReceiver = null;
+    //private static boolean initialized = false;
+    //private static TraceSpanReceiver traceSpanReceiver = null;
 
     /**
      * Add the phoenix span receiver so we can log the traces. We have a single trace source for the
      * whole JVM
      */
-    public synchronized static void addTraceMetricsSource() {
+    /*public synchronized static void addTraceMetricsSource() {
         try {
             QueryServicesOptions options = QueryServicesOptions.withDefaults();
             if (!initialized && options.isTracingEnabled()) {
@@ -289,7 +251,7 @@ public class Tracing {
 
     public static TraceSpanReceiver getTraceSpanReceiver() {
         return traceSpanReceiver;
-    }
+    }*/
 
     public static boolean isTraceOn(String traceOption) {
         Preconditions.checkArgument(traceOption != null);
@@ -305,6 +267,6 @@ public class Tracing {
      * @return true If tracing is enabled, false otherwise
      */
     public static boolean isTracing() {
-        return Trace.isTracing();
+        return TracingUtils.getTracer() != null;
     }
 }

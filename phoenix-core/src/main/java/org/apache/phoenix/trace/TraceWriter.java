@@ -103,13 +103,13 @@ public class TraceWriter {
 
     public void start() {
 
-        traceSpanReceiver = getTraceSpanReceiver();
-        if (traceSpanReceiver == null) {
+        //traceSpanReceiver = getTraceSpanReceiver();
+        /*if (traceSpanReceiver == null) {
             LOGGER.warn(
                 "No receiver has been initialized for TraceWriter. Traces will not be written.");
             LOGGER.warn("Restart Phoenix to try again.");
             return;
-        }
+        }*/
 
         ThreadFactoryBuilder builder = new ThreadFactoryBuilder();
         builder.setDaemon(true).setNameFormat("PHOENIX-METRICS-WRITER");
@@ -122,10 +122,10 @@ public class TraceWriter {
         LOGGER.info("Writing tracing metrics to phoenix table");
     }
 
-    @VisibleForTesting
+    /*@VisibleForTesting
     protected TraceSpanReceiver getTraceSpanReceiver() {
         return Tracing.getTraceSpanReceiver();
-    }
+    }*/
 
     public class FlushMetrics implements Runnable {
 

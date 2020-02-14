@@ -19,24 +19,24 @@ package org.apache.phoenix.trace;
 
 import java.sql.SQLException;
 
+import io.opentracing.Scope;
 import org.apache.phoenix.iterate.DelegateResultIterator;
 import org.apache.phoenix.iterate.ResultIterator;
 import org.apache.phoenix.schema.tuple.Tuple;
-import org.apache.htrace.TraceScope;
 
 /**
  * A simple iterator that closes the trace scope when the iterator is closed.
  */
 public class TracingIterator extends DelegateResultIterator {
 
-    private TraceScope scope;
+    private Scope scope;
     private boolean started;
 
     /**
      * @param scope a scope with a non-null span
      * @param iterator delegate
      */
-    public TracingIterator(TraceScope scope, ResultIterator iterator) {
+    public TracingIterator(Scope scope, ResultIterator iterator) {
         super(iterator);
         this.scope = scope;
     }
@@ -50,7 +50,7 @@ public class TracingIterator extends DelegateResultIterator {
     @Override
     public Tuple next() throws SQLException {
         if (!started) {
-            scope.getSpan().addTimelineAnnotation("First request completed");
+            scope.span().log("First request completed");
             started = true;
         }
         return super.next();

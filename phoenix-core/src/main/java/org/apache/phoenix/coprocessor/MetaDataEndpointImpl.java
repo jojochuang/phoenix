@@ -567,7 +567,7 @@ public class MetaDataEndpointImpl extends MetaDataProtocol implements RegionCopr
 
         LOGGER.info("Starting Tracing-Metrics Systems");
         // Start the phoenix trace collection
-        Tracing.addTraceMetricsSource();
+        //Tracing.addTraceMetricsSource();
         Metrics.ensureConfigured();
     }
     

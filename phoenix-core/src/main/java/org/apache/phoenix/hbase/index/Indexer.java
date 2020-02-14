@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import io.opentracing.Scope;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
@@ -56,9 +57,6 @@ import org.apache.hadoop.hbase.regionserver.Region;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import org.apache.hadoop.hbase.wal.WALEdit;
-import org.apache.htrace.Span;
-import org.apache.htrace.Trace;
-import org.apache.htrace.TraceScope;
 import org.apache.phoenix.coprocessor.BaseScannerRegionObserver.ReplayWrite;
 import org.apache.phoenix.coprocessor.DelegateRegionCoprocessorEnvironment;
 import org.apache.phoenix.hbase.index.LockManager.RowLock;
@@ -78,8 +76,8 @@ import org.apache.phoenix.hbase.index.write.RecoveryIndexWriter;
 import org.apache.phoenix.hbase.index.write.recovery.PerRegionIndexWriteCache;
 import org.apache.phoenix.hbase.index.write.recovery.StoreFailuresInCachePolicy;
 import org.apache.phoenix.query.QueryServicesOptions;
+import org.apache.phoenix.trace.Trace;
 import org.apache.phoenix.trace.TracingUtils;
-import org.apache.phoenix.trace.util.NullSpan;
 import org.apache.phoenix.util.EnvironmentEdgeManager;
 import org.apache.phoenix.util.ScanUtil;
 import org.apache.phoenix.util.ServerUtil;
@@ -485,11 +483,11 @@ public class Indexer implements RegionObserver, RegionCoprocessor {
       }
 
       // get the current span, or just use a null-span to avoid a bunch of if statements
-      try (TraceScope scope = Trace.startSpan("Starting to build index updates")) {
-          Span current = scope.getSpan();
+      try (Scope scope = Trace.startSpan("Starting to build index updates")) {
+          /*Span current = scope.span();
           if (current == null) {
               current = NullSpan.INSTANCE;
-          }
+          }*/
           long start = EnvironmentEdgeManager.currentTimeMillis();
 
           // get the index updates for all elements in this batch
@@ -506,8 +504,8 @@ public class Indexer implements RegionObserver, RegionCoprocessor {
               metricSource.incrementNumSlowIndexPrepareCalls();
           }
           metricSource.updateIndexPrepareTime(duration);
-          current.addTimelineAnnotation("Built index updates, doing preStep");
-          TracingUtils.addAnnotation(current, "index update count", indexUpdates.size());
+          TracingUtils.addTimelineAnnotation("Built index updates, doing preStep");
+          TracingUtils.addAnnotation("index update count", indexUpdates.size());
           byte[] tableName = c.getEnvironment().getRegion().getTableDescriptor().getTableName().getName();
           Iterator<Pair<Mutation, byte[]>> indexUpdatesItr = indexUpdates.iterator();
           List<Mutation> localUpdates = new ArrayList<Mutation>(indexUpdates.size());
@@ -602,14 +600,10 @@ public class Indexer implements RegionObserver, RegionCoprocessor {
       }
 
       // get the current span, or just use a null-span to avoid a bunch of if statements
-      try (TraceScope scope = Trace.startSpan("Completing index writes")) {
-          Span current = scope.getSpan();
-          if (current == null) {
-              current = NullSpan.INSTANCE;
-          }
+      try (Scope scope = Trace.startSpan("Completing index writes")) {
           long start = EnvironmentEdgeManager.currentTimeMillis();
           
-          current.addTimelineAnnotation("Actually doing index update for first time");
+          TracingUtils.addTimelineAnnotation("Actually doing index update for first time");
           writer.writeAndHandleFailure(context.indexUpdates, false, context.clientVersion);
 
           long duration = EnvironmentEdgeManager.currentTimeMillis() - start;

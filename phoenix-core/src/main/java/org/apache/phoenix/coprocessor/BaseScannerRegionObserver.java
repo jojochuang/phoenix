@@ -20,6 +20,7 @@ package org.apache.phoenix.coprocessor;
 import java.io.IOException;
 import java.util.List;
 
+import io.opentracing.Span;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.NotServingRegionException;
@@ -34,8 +35,6 @@ import org.apache.hadoop.hbase.regionserver.RegionScanner;
 import org.apache.hadoop.hbase.regionserver.ScannerContext;
 import org.apache.hadoop.hbase.regionserver.ScannerContextUtil;
 import org.apache.hadoop.hbase.util.Bytes;
-import org.apache.htrace.Span;
-import org.apache.htrace.Trace;
 import org.apache.phoenix.execute.TupleProjector;
 import org.apache.phoenix.hbase.index.covered.update.ColumnReference;
 import org.apache.phoenix.index.IndexMaintainer;
@@ -43,6 +42,7 @@ import org.apache.phoenix.iterate.NonAggregateRegionScannerFactory;
 import org.apache.phoenix.iterate.RegionScannerFactory;
 import org.apache.phoenix.schema.StaleRegionBoundaryCacheException;
 import org.apache.phoenix.schema.types.PUnsignedTinyint;
+import org.apache.phoenix.trace.TracingUtils;
 import org.apache.phoenix.util.ScanUtil;
 import org.apache.phoenix.util.ServerUtil;
 
@@ -245,8 +245,8 @@ abstract public class BaseScannerRegionObserver implements RegionObserver {
                 // and region servers to crash. See https://issues.apache.org/jira/browse/PHOENIX-1596
                 // TraceScope can't be used here because closing the scope will end up calling
                 // currentSpan.stop() and that should happen only when we are closing the scanner.
-                final Span savedSpan = Trace.currentSpan();
-                final Span child = Trace.startSpan(SCANNER_OPENED_TRACE_INFO, savedSpan).getSpan();
+                final Span savedSpan = TracingUtils.getTracer().activeSpan();
+                final Span child = TracingUtils.createTrace(SCANNER_OPENED_TRACE_INFO, savedSpan).span();
                 try {
                     RegionScanner scanner = doPostScannerOpen(c, scan, delegate);
                     scanner = new DelegateRegionScanner(scanner) {
@@ -258,7 +258,7 @@ abstract public class BaseScannerRegionObserver implements RegionObserver {
                                 delegate.close();
                             } finally {
                                 if (child != null) {
-                                    child.stop();
+                                    child.finish();
                                 }
                             }
                         }
@@ -271,10 +271,10 @@ abstract public class BaseScannerRegionObserver implements RegionObserver {
                 } finally {
                     try {
                         if (!success && child != null) {
-                            child.stop();
+                            child.finish();
                         }
                     } finally {
-                        Trace.continueSpan(savedSpan);
+                        TracingUtils.getTracer().scopeManager().activate(savedSpan, false);
                     }
                 }
             }

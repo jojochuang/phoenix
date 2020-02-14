@@ -24,14 +24,19 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.htrace.Span;
-import org.apache.htrace.Trace;
-import org.apache.htrace.impl.MilliSpan;
+import io.opentracing.Span;
+import io.opentracing.mock.MockSpan;
+import io.opentracing.mock.MockTracer;
+import io.opentracing.util.GlobalTracer;
+//import org.apache.htrace.Span;
+//import org.apache.htrace.Trace;
+//import org.apache.htrace.impl.MilliSpan;
 import org.apache.phoenix.end2end.ParallelStatsDisabledIT;
 import org.apache.phoenix.jdbc.DelegateConnection;
 import org.apache.phoenix.trace.util.Tracing;
@@ -59,20 +64,29 @@ public class BaseTracingTestIT extends ParallelStatsDisabledIT {
     protected TraceSpanReceiver traceSpanReceiver = null;
     protected TestTraceWriter testTraceWriter = null;
 
+    protected MockTracer tracer;
+
     @Before
     public void setup() {
         tracingTableName = "TRACING_" + generateUniqueName();
-        traceSpanReceiver = new TraceSpanReceiver();
+        /*traceSpanReceiver = new TraceSpanReceiver();
         Trace.addReceiver(traceSpanReceiver);
         testTraceWriter =
                 new TestTraceWriter(tracingTableName, defaultTracingThreadPoolForTest,
-                        defaultTracingBatchSizeForTest);
+                        defaultTracingBatchSizeForTest);*/
+
+        startMockTracer();
+    }
+
+    private void startMockTracer() {
+        tracer = new MockTracer();
+        GlobalTracer.register(tracer);
     }
 
     @After
     public void cleanUp() {
-        Trace.removeReceiver(traceSpanReceiver);
-        if (testTraceWriter != null) testTraceWriter.stop();
+        //Trace.removeReceiver(traceSpanReceiver);
+        //if (testTraceWriter != null) testTraceWriter.stop();
     }
 
     public static Connection getConnectionWithoutTracing() throws SQLException {
@@ -110,14 +124,19 @@ public class BaseTracingTestIT extends ParallelStatsDisabledIT {
     protected Span createNewSpan(long traceid, long parentid, long spanid, String description,
             long startTime, long endTime, String processid, String... tags) {
 
-        Span span =
+        MockSpan.MockContext parent = new MockSpan.MockContext(traceid, parentid,
+            new HashMap<String, String>());
+        Span span = TracingUtils.getTracer().buildSpan(description).
+            asChildOf(parent).withStartTimestamp(startTime).start();
+
+        /*Span span =
                 new MilliSpan.Builder().description(description).traceId(traceid)
                         .parents(new long[] { parentid }).spanId(spanid).processId(processid)
-                        .begin(startTime).end(endTime).build();
+                        .begin(startTime).end(endTime).build();*/
 
         int tagCount = 0;
         for (String annotation : tags) {
-            span.addKVAnnotation((Integer.toString(tagCount++)).getBytes(), annotation.getBytes());
+            span.setTag(Integer.toString(tagCount++), annotation);
         }
         return span;
     }
@@ -159,10 +178,10 @@ public class BaseTracingTestIT extends ParallelStatsDisabledIT {
             }
         }
 
-        @Override
+        /*@Override
         protected TraceSpanReceiver getTraceSpanReceiver() {
             return traceSpanReceiver;
-        }
+        }*/
 
         public void stop() {
             if (executor == null) return;
