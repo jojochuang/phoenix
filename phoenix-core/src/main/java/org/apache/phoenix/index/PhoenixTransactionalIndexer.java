@@ -51,7 +51,6 @@ import org.apache.phoenix.execute.PhoenixTxIndexMutationGenerator;
 import org.apache.phoenix.hbase.index.write.IndexWriter;
 import org.apache.phoenix.hbase.index.write.LeaveIndexActiveFailurePolicy;
 import org.apache.phoenix.hbase.index.write.ParallelWriterIndexCommitter;
-import org.apache.phoenix.trace.Trace;
 import org.apache.phoenix.trace.TracingUtils;
 import org.apache.phoenix.transaction.PhoenixTransactionContext;
 import org.apache.phoenix.util.PropertiesUtil;
@@ -157,7 +156,7 @@ public class PhoenixTransactionalIndexer implements RegionObserver, RegionCoproc
         
         Collection<Pair<Mutation, byte[]>> indexUpdates = null;
         // get the current span, or just use a null-span to avoid a bunch of if statements
-        try (Scope scope = Trace.startSpan("Starting to build index updates")) {
+        try (Scope scope = TracingUtils.createTrace("Starting to build index updates")) {
 
             RegionCoprocessorEnvironment env = c.getEnvironment();
             PhoenixTransactionContext txnContext = indexMetaData.getTransactionContext();
@@ -210,7 +209,7 @@ public class PhoenixTransactionalIndexer implements RegionObserver, RegionCoproc
             return;
         }
         // get the current span, or just use a null-span to avoid a bunch of if statements
-        try (Scope scope = Trace.startSpan("Starting to write index updates")) {
+        try (Scope scope = TracingUtils.createTrace("Starting to write index updates")) {
 
             if (success) { // if miniBatchOp was successfully written, write index updates
                 if (!context.indexUpdates.isEmpty()) {

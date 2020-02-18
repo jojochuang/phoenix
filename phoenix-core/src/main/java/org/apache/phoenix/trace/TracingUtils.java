@@ -22,7 +22,9 @@ import com.sun.istack.NotNull;
 import io.opentracing.Scope;
 import io.opentracing.Tracer;
 import io.opentracing.mock.MockSpan;
+import io.opentracing.mock.MockTracer;
 import io.opentracing.util.GlobalTracer;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Pair;
 import io.opentracing.Span;
@@ -50,6 +52,28 @@ public class TracingUtils {
     public static Tracer getTracer() {
         return GlobalTracer.get();
     }
+
+    public static void initTracer(Configuration c, String serviceName) {
+    /*if(c != null) {
+      conf = new HBaseHTraceConfiguration(c);
+    }
+
+    if (tracer == null && conf != null) {
+      tracer = new Tracer.Builder("Tracer").conf(conf).build();
+    }*/
+
+        if (!GlobalTracer.isRegistered()) {
+            /*io.jaegertracing.spi.Sampler sampler = new ConstSampler(true);
+            conf = io.jaegertracing.Configuration.fromEnv(serviceName);
+            io.opentracing.Tracer tracer = conf.getTracerBuilder().withSampler(sampler).build();*/
+            Tracer tracer = new MockTracer();
+
+            GlobalTracer.register(tracer);
+        }
+
+    }
+
+    public static final long ROOT_SPAN_ID = 0L;
 
     /**
      * Start a span with the currently configured sampling frequency. Creates a new 'current' span

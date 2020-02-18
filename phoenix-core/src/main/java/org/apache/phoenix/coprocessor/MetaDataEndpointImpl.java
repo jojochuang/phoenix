@@ -229,6 +229,7 @@ import org.apache.phoenix.schema.types.PLong;
 import org.apache.phoenix.schema.types.PTinyint;
 import org.apache.phoenix.schema.types.PVarbinary;
 import org.apache.phoenix.schema.types.PVarchar;
+import org.apache.phoenix.trace.TracingUtils;
 import org.apache.phoenix.trace.util.Tracing;
 import org.apache.phoenix.transaction.TransactionFactory;
 import org.apache.phoenix.util.ByteUtil;
@@ -568,6 +569,7 @@ public class MetaDataEndpointImpl extends MetaDataProtocol implements RegionCopr
         LOGGER.info("Starting Tracing-Metrics Systems");
         // Start the phoenix trace collection
         //Tracing.addTraceMetricsSource();
+        TracingUtils.initTracer(config, "Phoenix coprocessor");
         Metrics.ensureConfigured();
     }
     

@@ -76,7 +76,6 @@ import org.apache.phoenix.hbase.index.write.RecoveryIndexWriter;
 import org.apache.phoenix.hbase.index.write.recovery.PerRegionIndexWriteCache;
 import org.apache.phoenix.hbase.index.write.recovery.StoreFailuresInCachePolicy;
 import org.apache.phoenix.query.QueryServicesOptions;
-import org.apache.phoenix.trace.Trace;
 import org.apache.phoenix.trace.TracingUtils;
 import org.apache.phoenix.util.EnvironmentEdgeManager;
 import org.apache.phoenix.util.ScanUtil;
@@ -483,7 +482,7 @@ public class Indexer implements RegionObserver, RegionCoprocessor {
       }
 
       // get the current span, or just use a null-span to avoid a bunch of if statements
-      try (Scope scope = Trace.startSpan("Starting to build index updates")) {
+      try (Scope scope = TracingUtils.createTrace("Starting to build index updates")) {
           /*Span current = scope.span();
           if (current == null) {
               current = NullSpan.INSTANCE;
@@ -600,7 +599,7 @@ public class Indexer implements RegionObserver, RegionCoprocessor {
       }
 
       // get the current span, or just use a null-span to avoid a bunch of if statements
-      try (Scope scope = Trace.startSpan("Completing index writes")) {
+      try (Scope scope = TracingUtils.createTrace("Completing index writes")) {
           long start = EnvironmentEdgeManager.currentTimeMillis();
           
           TracingUtils.addTimelineAnnotation("Actually doing index update for first time");

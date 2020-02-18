@@ -62,7 +62,6 @@ import javax.annotation.Nullable;
 import io.opentracing.Scope;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Consistency;
-import org.apache.htrace.Sampler;
 import org.apache.phoenix.call.CallRunner;
 import org.apache.phoenix.exception.SQLExceptionCode;
 import org.apache.phoenix.exception.SQLExceptionInfo;
@@ -107,6 +106,8 @@ import org.apache.phoenix.schema.types.PUnsignedTime;
 import org.apache.phoenix.schema.types.PUnsignedTimestamp;
 import org.apache.phoenix.schema.types.PVarbinary;
 //import org.apache.phoenix.trace.util.Tracing;
+import org.apache.phoenix.trace.TracingUtils;
+import org.apache.phoenix.trace.util.Sampler;
 import org.apache.phoenix.trace.util.Tracing;
 import org.apache.phoenix.transaction.PhoenixTransactionContext;
 import org.apache.phoenix.util.DateUtil;
@@ -176,6 +177,10 @@ public class PhoenixConnection implements Connection, MetaDataMutated, SQLClosea
     /*static {
         Tracing.addTraceMetricsSource();
     }*/
+
+    static {
+        TracingUtils.initTracer(null, "Phoenix connection");
+    }
 
     private static Properties newPropsWithSCN(long scn, Properties props) {
         props = new Properties(props);

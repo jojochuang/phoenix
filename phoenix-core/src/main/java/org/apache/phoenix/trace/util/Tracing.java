@@ -25,19 +25,15 @@ import java.util.concurrent.Callable;
 
 import io.opentracing.Scope;
 import io.opentracing.Span;
+import io.opentracing.Tracer;
+import io.opentracing.contrib.concurrent.TracedCallable;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.htrace.HTraceConfiguration;
 import org.apache.phoenix.call.CallRunner;
 import org.apache.phoenix.call.CallWrapper;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.parse.TraceStatement;
 import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.query.QueryServicesOptions;
-import org.apache.htrace.Sampler;
-import org.apache.htrace.Trace;
-import org.apache.htrace.Tracer;
-import org.apache.htrace.impl.ProbabilitySampler;
-import org.apache.htrace.wrappers.TraceCallable;
 import org.apache.phoenix.trace.TracingUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,13 +128,13 @@ public class Tracing {
 
     public static Sampler<?> getConfiguredSampler(TraceStatement traceStatement) {
       double samplingRate = traceStatement.getSamplingRate();
-      if (samplingRate >= 1.0) {
+      if (samplingRate > 0.0) {
           return Sampler.ALWAYS;
-      } else if (samplingRate < 1.0 && samplingRate > 0.0) {
+      } /*else if (samplingRate < 1.0 && samplingRate > 0.0) {
           Map<String, String> items = new HashMap<String, String>();
           items.put(ProbabilitySampler.SAMPLER_FRACTION_CONF_KEY, Double.toString(samplingRate));
           return new ProbabilitySampler(HTraceConfiguration.fromMap(items));
-      } else {
+      } */else {
           return Sampler.NEVER;
       }
     }
@@ -168,10 +164,17 @@ public class Tracing {
      * @return The callable provided, wrapped if tracing, 'callable' if not.
      */
     public static <V> Callable<V> wrap(Callable<V> callable, String description) {
-        if (Trace.isTracing()) {
-            return new TraceCallable<V>(Trace.currentSpan(), callable, description);
+        // TODO: the TracedCallable API doesn't support adding a description
+        // consider adding a TracedCallable in Pheonix
+        if (isTracing()) {
+            return new TracedCallable<V>(callable, TracingUtils.getTracer());
         }
         return callable;
+
+        /*if (isTracing()) {
+            return new TraceCallable<V>(Trace.currentSpan(), callable, description);
+        }
+        return callable;*/
     }
 
     /**

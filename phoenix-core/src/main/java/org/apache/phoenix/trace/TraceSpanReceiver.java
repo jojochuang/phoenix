@@ -31,6 +31,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ *
+ * FIXME: doesn't work with OpenTracing.
+ *
  * Sink for request traces ({@link SpanReceiver}) that pushes writes to {@link TraceWriter} in a
  * format that we can more easily consume.
  * <p>

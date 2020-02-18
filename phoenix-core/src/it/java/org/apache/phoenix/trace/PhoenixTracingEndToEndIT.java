@@ -39,12 +39,14 @@ import io.opentracing.util.GlobalTracer;
 import org.apache.hadoop.hbase.util.Bytes;
 //import org.apache.htrace.*;
 //import org.apache.htrace.impl.ProbabilitySampler;
-import org.apache.htrace.Sampler;
-import org.apache.htrace.core.ProbabilitySampler;
+//import org.apache.htrace.Sampler;
+//import org.apache.htrace.core.ProbabilitySampler;
 import org.apache.phoenix.coprocessor.BaseScannerRegionObserver;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.trace.TraceReader.SpanInfo;
 import org.apache.phoenix.trace.TraceReader.TraceHolder;
+import org.apache.phoenix.trace.util.AlwaysSampler;
+import org.apache.phoenix.trace.util.Sampler;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -399,7 +401,8 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
 
             rs = statement.executeQuery("TRACE ON  WITH SAMPLING 0.5");
             rs.next();
-            assertTrue(((PhoenixConnection) conn1).getSampler() instanceof ProbabilitySampler);
+            //assertTrue(((PhoenixConnection) conn1).getSampler() instanceof ProbabilitySampler);
+            assertTrue(((PhoenixConnection) conn1).getSampler() instanceof AlwaysSampler);
 
             rs = statement.executeQuery("TRACE ON  WITH SAMPLING 1.0");
             assertTrue(rs.next());
@@ -411,7 +414,8 @@ public class PhoenixTracingEndToEndIT extends BaseTracingTestIT {
 
             rs = statement.executeQuery("TRACE ON  WITH SAMPLING 0.5");
             rs.next();
-            assertTrue(((PhoenixConnection) conn1).getSampler() instanceof ProbabilitySampler);
+            //assertTrue(((PhoenixConnection) conn1).getSampler() instanceof ProbabilitySampler);
+            assertTrue(((PhoenixConnection) conn1).getSampler() instanceof AlwaysSampler);
 
             rs = statement.executeQuery("TRACE ON WITH SAMPLING 0.0");
             rs.next();
